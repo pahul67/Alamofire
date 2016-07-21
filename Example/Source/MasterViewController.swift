@@ -86,7 +86,7 @@ class MasterViewController: UITableViewController {
                 }
             }
 
-            if let request = requestForSegue(segue: segue) {
+            if let request = requestForSegue(segue) {
                 detailViewController.request = request
             }
         }
