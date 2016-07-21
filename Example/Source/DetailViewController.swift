@@ -27,7 +27,7 @@ import UIKit
 
 class DetailViewController: UITableViewController {
     enum Sections: Int {
-        case Headers, Body
+        case headers, body
     }
 
     var request: Alamofire.Request? {
@@ -112,12 +112,13 @@ class DetailViewController: UITableViewController {
                 options: .skipsHiddenFiles
             )
 
-            if let fileURL = contents.first {
-                let data = try Data(contentsOf: fileURL)
+            if let fileURL = contents.first,
+               let data = try? Data(contentsOf: fileURL)
+            {
                 let json = try JSONSerialization.jsonObject(with: data, options: JSONSerialization.ReadingOptions())
                 let prettyData = try JSONSerialization.data(withJSONObject: json, options: .prettyPrinted)
 
-                if let prettyString = String(data: prettyData, encoding: String.Encoding.utf8) {
+                if let prettyString = NSString(data: prettyData, encoding: String.Encoding.utf8.rawValue) as? String {
                     try fileManager.removeItem(at: fileURL)
                     return prettyString
                 }
@@ -135,25 +136,25 @@ class DetailViewController: UITableViewController {
 extension DetailViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch Sections(rawValue: section)! {
-        case .Headers:
+        case .headers:
             return headers.count
-        case .Body:
+        case .body:
             return body == nil ? 0 : 1
         }
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        switch Sections(rawValue: indexPath.section)! {
-        case .Headers:
+        switch Sections(rawValue: (indexPath as NSIndexPath).section)! {
+        case .headers:
             let cell = tableView.dequeueReusableCell(withIdentifier: "Header")!
-            let field = headers.keys.sorted()[indexPath.row]
+            let field = headers.keys.sorted(isOrderedBefore: <)[(indexPath as NSIndexPath).row]
             let value = headers[field]
 
             cell.textLabel?.text = field
             cell.detailTextLabel?.text = value
 
             return cell
-        case .Body:
+        case .body:
             let cell = tableView.dequeueReusableCell(withIdentifier: "Body")!
             cell.textLabel?.text = body
 
@@ -175,16 +176,16 @@ extension DetailViewController {
         }
 
         switch Sections(rawValue: section)! {
-        case .Headers:
+        case .headers:
             return "Headers"
-        case .Body:
+        case .body:
             return "Body"
         }
     }
 
     override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        switch Sections(rawValue: indexPath.section)! {
-        case .Body:
+        switch Sections(rawValue: (indexPath as NSIndexPath).section)! {
+        case .body:
             return 300
         default:
             return tableView.rowHeight
@@ -192,7 +193,7 @@ extension DetailViewController {
     }
 
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        if Sections(rawValue: section) == .Body, let elapsedTime = elapsedTime {
+        if Sections(rawValue: section) == .body, let elapsedTime = elapsedTime {
             let elapsedTimeText = DetailViewController.numberFormatter.string(from: elapsedTime) ?? "???"
             return "Elapsed Time: \(elapsedTimeText) sec"
         }
