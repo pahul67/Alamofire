@@ -27,13 +27,13 @@ import Foundation
 import XCTest
 
 class SessionDelegateTestCase: BaseTestCase {
-    var manager: Alamofire.Manager!
+    var manager: SessionManager!
 
     // MARK: - Setup and Teardown
 
     override func setUp() {
         super.setUp()
-        manager = Alamofire.Manager(configuration: .ephemeral)
+        manager = SessionManager(configuration: .ephemeral)
     }
 
     // MARK: - Tests - Session Invalidation
@@ -64,67 +64,53 @@ class SessionDelegateTestCase: BaseTestCase {
     // MARK: - Tests - Session Challenges
 
     func testThatSessionDidReceiveChallengeClosureIsCalledWhenSet() {
-        if #available(iOS 9.0, *) {
-            // Given
-            let expectation = self.expectation(description: "Override closure should be called")
+        // Given
+        let expectation = self.expectation(description: "Override closure should be called")
 
-            var overrideClosureCalled = false
-            var response: HTTPURLResponse?
+        var overrideClosureCalled = false
+        var response: HTTPURLResponse?
 
-            manager.delegate.sessionDidReceiveChallenge = { session, challenge in
-                overrideClosureCalled = true
-                return (.performDefaultHandling, nil)
-            }
-
-            // When
-            manager.request(.GET, "https://httpbin.org/get").responseJSON { closureResponse in
-                response = closureResponse.response
-                expectation.fulfill()
-            }
-
-            waitForExpectations(timeout: timeout, handler: nil)
-
-            // Then
-            XCTAssertTrue(overrideClosureCalled)
-            XCTAssertEqual(response?.statusCode, 200)
-        } else {
-            // This test MUST be disabled on iOS 8.x because `respondsToSelector` is not being called for the
-            // `URLSession:didReceiveChallenge:completionHandler:` selector when more than one test here is run
-            // at a time. Whether we flush the URL session of wipe all the shared credentials, the behavior is
-            // still the same. Until we find a better solution, we'll need to disable this test on iOS 8.x.
+        manager.delegate.sessionDidReceiveChallenge = { session, challenge in
+            overrideClosureCalled = true
+            return (.performDefaultHandling, nil)
         }
+
+        // When
+        manager.request("https://httpbin.org/get", withMethod: .get).responseJSON { closureResponse in
+            response = closureResponse.response
+            expectation.fulfill()
+        }
+
+        waitForExpectations(timeout: timeout, handler: nil)
+
+        // Then
+        XCTAssertTrue(overrideClosureCalled)
+        XCTAssertEqual(response?.statusCode, 200)
     }
 
     func testThatSessionDidReceiveChallengeWithCompletionClosureIsCalledWhenSet() {
-        if #available(iOS 9.0, *) {
-            // Given
-            let expectation = self.expectation(description: "Override closure should be called")
+        // Given
+        let expectation = self.expectation(description: "Override closure should be called")
 
-            var overrideClosureCalled = false
-            var response: HTTPURLResponse?
+        var overrideClosureCalled = false
+        var response: HTTPURLResponse?
 
-            manager.delegate.sessionDidReceiveChallengeWithCompletion = { session, challenge, completion in
-                overrideClosureCalled = true
-                completion(.performDefaultHandling, nil)
-            }
-
-            // When
-            manager.request(.GET, "https://httpbin.org/get").responseJSON { closureResponse in
-                response = closureResponse.response
-                expectation.fulfill()
-            }
-
-            waitForExpectations(timeout: timeout, handler: nil)
-
-            // Then
-            XCTAssertTrue(overrideClosureCalled)
-            XCTAssertEqual(response?.statusCode, 200)
-        } else {
-            // This test MUST be disabled on iOS 8.x because `respondsToSelector` is not being called for the
-            // `URLSession:didReceiveChallenge:completionHandler:` selector when more than one test here is run
-            // at a time. Whether we flush the URL session of wipe all the shared credentials, the behavior is
-            // still the same. Until we find a better solution, we'll need to disable this test on iOS 8.x.
+        manager.delegate.sessionDidReceiveChallengeWithCompletion = { session, challenge, completion in
+            overrideClosureCalled = true
+            completion(.performDefaultHandling, nil)
         }
+
+        // When
+        manager.request("https://httpbin.org/get", withMethod: .get).responseJSON { closureResponse in
+            response = closureResponse.response
+            expectation.fulfill()
+        }
+
+        waitForExpectations(timeout: timeout, handler: nil)
+
+        // Then
+        XCTAssertTrue(overrideClosureCalled)
+        XCTAssertEqual(response?.statusCode, 200)
     }
 
     // MARK: - Tests - Redirects
@@ -132,17 +118,17 @@ class SessionDelegateTestCase: BaseTestCase {
     func testThatRequestWillPerformHTTPRedirectionByDefault() {
         // Given
         let redirectURLString = "https://www.apple.com/"
-        let URLString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
+        let urlString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
 
         let expectation = self.expectation(description: "Request should redirect to \(redirectURLString)")
 
-        var request: Foundation.URLRequest?
+        var request: URLRequest?
         var response: HTTPURLResponse?
         var data: Data?
         var error: NSError?
 
         // When
-        manager.request(.GET, URLString)
+        manager.request(urlString, withMethod: .get)
             .response { responseRequest, responseResponse, responseData, responseError in
                 request = responseRequest
                 response = responseResponse
@@ -166,17 +152,17 @@ class SessionDelegateTestCase: BaseTestCase {
     func testThatRequestWillPerformRedirectionMultipleTimesByDefault() {
         // Given
         let redirectURLString = "https://httpbin.org/get"
-        let URLString = "https://httpbin.org/redirect/5"
+        let urlString = "https://httpbin.org/redirect/5"
 
         let expectation = self.expectation(description: "Request should redirect to \(redirectURLString)")
 
-        var request: Foundation.URLRequest?
+        var request: URLRequest?
         var response: HTTPURLResponse?
         var data: Data?
         var error: NSError?
 
         // When
-        manager.request(.GET, URLString)
+        manager.request(urlString, withMethod: .get)
             .response { responseRequest, responseResponse, responseData, responseError in
                 request = responseRequest
                 response = responseResponse
@@ -201,24 +187,24 @@ class SessionDelegateTestCase: BaseTestCase {
     func testThatTaskOverrideClosureCanPerformHTTPRedirection() {
         // Given
         let redirectURLString = "https://www.apple.com/"
-        let URLString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
+        let urlString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
 
         let expectation = self.expectation(description: "Request should redirect to \(redirectURLString)")
         let callbackExpectation = self.expectation(description: "Redirect callback should be made")
-        let delegate: Alamofire.Manager.SessionDelegate = manager.delegate
+        let delegate: SessionDelegate = manager.delegate
 
         delegate.taskWillPerformHTTPRedirection = { _, _, _, request in
             callbackExpectation.fulfill()
             return request
         }
 
-        var request: Foundation.URLRequest?
+        var request: URLRequest?
         var response: HTTPURLResponse?
         var data: Data?
         var error: NSError?
 
         // When
-        manager.request(.GET, URLString)
+        manager.request(urlString, withMethod: .get)
             .response { responseRequest, responseResponse, responseData, responseError in
                 request = responseRequest
                 response = responseResponse
@@ -242,24 +228,24 @@ class SessionDelegateTestCase: BaseTestCase {
     func testThatTaskOverrideClosureWithCompletionCanPerformHTTPRedirection() {
         // Given
         let redirectURLString = "https://www.apple.com/"
-        let URLString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
+        let urlString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
 
         let expectation = self.expectation(description: "Request should redirect to \(redirectURLString)")
         let callbackExpectation = self.expectation(description: "Redirect callback should be made")
-        let delegate: Alamofire.Manager.SessionDelegate = manager.delegate
+        let delegate: SessionDelegate = manager.delegate
 
         delegate.taskWillPerformHTTPRedirectionWithCompletion = { _, _, _, request, completion in
             completion(request)
             callbackExpectation.fulfill()
         }
 
-        var request: Foundation.URLRequest?
+        var request: URLRequest?
         var response: HTTPURLResponse?
         var data: Data?
         var error: NSError?
 
         // When
-        manager.request(.GET, URLString)
+        manager.request(urlString, withMethod: .get)
             .response { responseRequest, responseResponse, responseData, responseError in
                 request = responseRequest
                 response = responseResponse
@@ -284,24 +270,24 @@ class SessionDelegateTestCase: BaseTestCase {
     func testThatTaskOverrideClosureCanCancelHTTPRedirection() {
         // Given
         let redirectURLString = "https://www.apple.com"
-        let URLString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
+        let urlString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
 
         let expectation = self.expectation(description: "Request should not redirect to \(redirectURLString)")
         let callbackExpectation = self.expectation(description: "Redirect callback should be made")
-        let delegate: Alamofire.Manager.SessionDelegate = manager.delegate
+        let delegate: SessionDelegate = manager.delegate
 
         delegate.taskWillPerformHTTPRedirectionWithCompletion = { _, _, _, _, completion in
             callbackExpectation.fulfill()
             completion(nil)
         }
 
-        var request: Foundation.URLRequest?
+        var request: URLRequest?
         var response: HTTPURLResponse?
         var data: Data?
         var error: NSError?
 
         // When
-        manager.request(.GET, URLString)
+        manager.request(urlString, withMethod: .get)
             .response { responseRequest, responseResponse, responseData, responseError in
                 request = responseRequest
                 response = responseResponse
@@ -319,31 +305,31 @@ class SessionDelegateTestCase: BaseTestCase {
         XCTAssertNotNil(data, "data should not be nil")
         XCTAssertNil(error, "error should be nil")
 
-        XCTAssertEqual(response?.url?.urlString ?? "", URLString, "response URL should match the origin URL")
+        XCTAssertEqual(response?.url?.urlString ?? "", urlString, "response URL should match the origin URL")
         XCTAssertEqual(response?.statusCode ?? -1, 302, "response should have a 302 status code")
     }
 
     func testThatTaskOverrideClosureWithCompletionCanCancelHTTPRedirection() {
         // Given
         let redirectURLString = "https://www.apple.com"
-        let URLString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
+        let urlString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
 
         let expectation = self.expectation(description: "Request should not redirect to \(redirectURLString)")
         let callbackExpectation = self.expectation(description: "Redirect callback should be made")
-        let delegate: Alamofire.Manager.SessionDelegate = manager.delegate
+        let delegate: SessionDelegate = manager.delegate
 
         delegate.taskWillPerformHTTPRedirection = { _, _, _, _ in
             callbackExpectation.fulfill()
             return nil
         }
 
-        var request: Foundation.URLRequest?
+        var request: URLRequest?
         var response: HTTPURLResponse?
         var data: Data?
         var error: NSError?
 
         // When
-        manager.request(.GET, URLString)
+        manager.request(urlString, withMethod: .get)
             .response { responseRequest, responseResponse, responseData, responseError in
                 request = responseRequest
                 response = responseResponse
@@ -361,7 +347,7 @@ class SessionDelegateTestCase: BaseTestCase {
         XCTAssertNotNil(data, "data should not be nil")
         XCTAssertNil(error, "error should be nil")
 
-        XCTAssertEqual(response?.url?.urlString ?? "", URLString, "response URL should match the origin URL")
+        XCTAssertEqual(response?.url?.urlString ?? "", urlString, "response URL should match the origin URL")
         XCTAssertEqual(response?.statusCode ?? -1, 302, "response should have a 302 status code")
     }
 
@@ -369,10 +355,10 @@ class SessionDelegateTestCase: BaseTestCase {
         // Given
         let redirectCount = 5
         let redirectURLString = "https://httpbin.org/get"
-        let URLString = "https://httpbin.org/redirect/\(redirectCount)"
+        let urlString = "https://httpbin.org/redirect/\(redirectCount)"
 
         let expectation = self.expectation(description: "Request should redirect to \(redirectURLString)")
-        let delegate: Alamofire.Manager.SessionDelegate = manager.delegate
+        let delegate: SessionDelegate = manager.delegate
         var redirectExpectations = [XCTestExpectation]()
         for index in 0..<redirectCount {
             redirectExpectations.insert(self.expectation(description: "Redirect #\(index) callback was received"), at: 0)
@@ -388,13 +374,13 @@ class SessionDelegateTestCase: BaseTestCase {
             return request
         }
 
-        var request: Foundation.URLRequest?
+        var request: URLRequest?
         var response: HTTPURLResponse?
         var data: Data?
         var error: NSError?
 
         // When
-        manager.request(.GET, URLString)
+        manager.request(urlString, withMethod: .get)
             .response { responseRequest, responseResponse, responseData, responseError in
                 request = responseRequest
                 response = responseResponse
@@ -420,10 +406,10 @@ class SessionDelegateTestCase: BaseTestCase {
         // Given
         let redirectCount = 5
         let redirectURLString = "https://httpbin.org/get"
-        let URLString = "https://httpbin.org/redirect/\(redirectCount)"
+        let urlString = "https://httpbin.org/redirect/\(redirectCount)"
 
         let expectation = self.expectation(description: "Request should redirect to \(redirectURLString)")
-        let delegate: Alamofire.Manager.SessionDelegate = manager.delegate
+        let delegate: SessionDelegate = manager.delegate
 
         var redirectExpectations = [XCTestExpectation]()
 
@@ -441,13 +427,13 @@ class SessionDelegateTestCase: BaseTestCase {
             completion(request)
         }
 
-        var request: Foundation.URLRequest?
+        var request: URLRequest?
         var response: HTTPURLResponse?
         var data: Data?
         var error: NSError?
 
         // When
-        manager.request(.GET, URLString)
+        manager.request(urlString, withMethod: .get)
             .response { responseRequest, responseResponse, responseData, responseError in
                 request = responseRequest
                 response = responseResponse
@@ -472,7 +458,7 @@ class SessionDelegateTestCase: BaseTestCase {
     func testThatRedirectedRequestContainsAllHeadersFromOriginalRequest() {
         // Given
         let redirectURLString = "https://httpbin.org/get"
-        let URLString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
+        let urlString = "https://httpbin.org/redirect-to?url=\(redirectURLString)"
         let headers = [
             "Authorization": "1234",
             "Custom-Header": "foobar",
@@ -485,9 +471,10 @@ class SessionDelegateTestCase: BaseTestCase {
         manager.delegate.taskWillPerformHTTPRedirection = { session, task, response, request in
             var redirectedRequest = request
 
-            if let originalRequest = task.originalRequest,
-               let headers = originalRequest.allHTTPHeaderFields,
-               let authorizationHeaderValue = headers["Authorization"]
+            if
+                let originalRequest = task.originalRequest,
+                let headers = originalRequest.allHTTPHeaderFields,
+                let authorizationHeaderValue = headers["Authorization"]
             {
                 var mutableRequest = request
                 mutableRequest.setValue(authorizationHeaderValue, forHTTPHeaderField: "Authorization")
@@ -502,7 +489,7 @@ class SessionDelegateTestCase: BaseTestCase {
         var response: Response<AnyObject, NSError>?
 
         // When
-        manager.request(.GET, URLString, headers: headers)
+        manager.request(urlString, withMethod: .get, headers: headers)
             .responseJSON { closureResponse in
                 response = closureResponse
                 expectation.fulfill()
@@ -515,10 +502,8 @@ class SessionDelegateTestCase: BaseTestCase {
         XCTAssertNotNil(response?.response, "response should not be nil")
         XCTAssertNotNil(response?.data, "data should not be nil")
         XCTAssertTrue(response?.result.isSuccess ?? false, "response result should be a success")
-        
-        if let json = response?.result.value as? [String: AnyObject],
-           let headers = json["headers"] as? [String: String]
-        {
+
+        if let json = response?.result.value as? [String: AnyObject], let headers = json["headers"] as? [String: String] {
             XCTAssertEqual(headers["Custom-Header"], "foobar", "Custom-Header should be equal to foobar")
             XCTAssertEqual(headers["Authorization"], "1234", "Authorization header should be equal to 1234")
         }
@@ -539,7 +524,7 @@ class SessionDelegateTestCase: BaseTestCase {
         }
 
         // When
-        manager.request(.GET, "https://httpbin.org/get").responseJSON { closureResponse in
+        manager.request("https://httpbin.org/get", withMethod: .get).responseJSON { closureResponse in
             response = closureResponse.response
             expectation.fulfill()
         }
@@ -564,7 +549,7 @@ class SessionDelegateTestCase: BaseTestCase {
         }
 
         // When
-        manager.request(.GET, "https://httpbin.org/get").responseJSON { closureResponse in
+        manager.request("https://httpbin.org/get", withMethod: .get).responseJSON { closureResponse in
             response = closureResponse.response
             expectation.fulfill()
         }

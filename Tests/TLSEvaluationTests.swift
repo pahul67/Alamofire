@@ -27,13 +27,14 @@ import Foundation
 import XCTest
 
 private struct TestCertificates {
-    static let RootCA = TestCertificates.certificateWithFileName("root-ca-disig")
-    static let IntermediateCA = TestCertificates.certificateWithFileName("intermediate-ca-disig")
-    static let Leaf = TestCertificates.certificateWithFileName("testssl-expire.disig.sk")
+    static let rootCA = TestCertificates.certificate(withFileName: "expired.badssl.com-root-ca")
+    static let intermediateCA1 = TestCertificates.certificate(withFileName: "expired.badssl.com-intermediate-ca-1")
+    static let intermediateCA2 = TestCertificates.certificate(withFileName: "expired.badssl.com-intermediate-ca-2")
+    static let leaf = TestCertificates.certificate(withFileName: "expired.badssl.com-leaf")
 
-    static func certificateWithFileName(_ fileName: String) -> SecCertificate {
-        class Bundle {}
-        let filePath = Foundation.Bundle(for: Bundle.self).pathForResource(fileName, ofType: "cer")!
+    static func certificate(withFileName fileName: String) -> SecCertificate {
+        class Locater {}
+        let filePath = Bundle(for: Locater.self).path(forResource: fileName, ofType: "cer")!
         let data = try! Data(contentsOf: URL(fileURLWithPath: filePath))
         let certificate = SecCertificateCreateWithData(nil, data)!
 
@@ -44,11 +45,12 @@ private struct TestCertificates {
 // MARK: -
 
 private struct TestPublicKeys {
-    static let RootCA = TestPublicKeys.publicKeyForCertificate(TestCertificates.RootCA)
-    static let IntermediateCA = TestPublicKeys.publicKeyForCertificate(TestCertificates.IntermediateCA)
-    static let Leaf = TestPublicKeys.publicKeyForCertificate(TestCertificates.Leaf)
+    static let rootCA = TestPublicKeys.publicKey(for: TestCertificates.rootCA)
+    static let intermediateCA1 = TestPublicKeys.publicKey(for: TestCertificates.intermediateCA1)
+    static let intermediateCA2 = TestPublicKeys.publicKey(for: TestCertificates.intermediateCA2)
+    static let leaf = TestPublicKeys.publicKey(for: TestCertificates.leaf)
 
-    static func publicKeyForCertificate(_ certificate: SecCertificate) -> SecKey {
+    static func publicKey(for certificate: SecCertificate) -> SecKey {
         let policy = SecPolicyCreateBasicX509()
         var trust: SecTrust?
         SecTrustCreateWithCertificates(certificate, policy, &trust)
@@ -62,8 +64,8 @@ private struct TestPublicKeys {
 // MARK: -
 
 class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
-    let URL = "https://testssl-expire.disig.sk/"
-    let host = "testssl-expire.disig.sk"
+    let urlString = "https://expired.badssl.com/"
+    let host = "expired.badssl.com"
     var configuration: URLSessionConfiguration!
 
     // MARK: Setup and Teardown
@@ -77,12 +79,12 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
 
     func testThatExpiredCertificateRequestFailsWithNoServerTrustPolicy() {
         // Given
-        weak var expectation = self.expectation(description: "\(URL)")
-        let manager = Manager(configuration: configuration)
+        weak var expectation = self.expectation(description: "\(urlString)")
+        let manager = SessionManager(configuration: configuration)
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -105,16 +107,16 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
     func testThatExpiredCertificateRequestFailsWithDefaultServerTrustPolicy() {
         // Given
         let policies = [host: ServerTrustPolicy.performDefaultEvaluation(validateHost: true)]
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -136,21 +138,21 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
 
     func testThatExpiredCertificateRequestFailsWhenPinningLeafCertificateWithCertificateChainValidation() {
         // Given
-        let certificates = [TestCertificates.Leaf]
+        let certificates = [TestCertificates.leaf]
         let policies: [String: ServerTrustPolicy] = [
             host: .pinCertificates(certificates: certificates, validateCertificateChain: true, validateHost: true)
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -170,21 +172,27 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
 
     func testThatExpiredCertificateRequestFailsWhenPinningAllCertificatesWithCertificateChainValidation() {
         // Given
-        let certificates = [TestCertificates.Leaf, TestCertificates.IntermediateCA, TestCertificates.RootCA]
+        let certificates = [
+            TestCertificates.leaf,
+            TestCertificates.intermediateCA1,
+            TestCertificates.intermediateCA2,
+            TestCertificates.rootCA
+        ]
+
         let policies: [String: ServerTrustPolicy] = [
             host: .pinCertificates(certificates: certificates, validateCertificateChain: true, validateHost: true)
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -204,21 +212,21 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
 
     func testThatExpiredCertificateRequestSucceedsWhenPinningLeafCertificateWithoutCertificateChainValidation() {
         // Given
-        let certificates = [TestCertificates.Leaf]
+        let certificates = [TestCertificates.leaf]
         let policies: [String: ServerTrustPolicy] = [
             host: .pinCertificates(certificates: certificates, validateCertificateChain: false, validateHost: true)
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -232,21 +240,21 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
 
     func testThatExpiredCertificateRequestSucceedsWhenPinningIntermediateCACertificateWithoutCertificateChainValidation() {
         // Given
-        let certificates = [TestCertificates.IntermediateCA]
+        let certificates = [TestCertificates.intermediateCA2]
         let policies: [String: ServerTrustPolicy] = [
             host: .pinCertificates(certificates: certificates, validateCertificateChain: false, validateHost: true)
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -260,21 +268,21 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
 
     func testThatExpiredCertificateRequestSucceedsWhenPinningRootCACertificateWithoutCertificateChainValidation() {
         // Given
-        let certificates = [TestCertificates.RootCA]
+        let certificates = [TestCertificates.rootCA]
         let policies: [String: ServerTrustPolicy] = [
             host: .pinCertificates(certificates: certificates, validateCertificateChain: false, validateHost: true)
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -290,21 +298,21 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
 
     func testThatExpiredCertificateRequestFailsWhenPinningLeafPublicKeyWithCertificateChainValidation() {
         // Given
-        let publicKeys = [TestPublicKeys.Leaf]
+        let publicKeys = [TestPublicKeys.leaf]
         let policies: [String: ServerTrustPolicy] = [
             host: .pinPublicKeys(publicKeys: publicKeys, validateCertificateChain: true, validateHost: true)
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -324,21 +332,21 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
 
     func testThatExpiredCertificateRequestSucceedsWhenPinningLeafPublicKeyWithoutCertificateChainValidation() {
         // Given
-        let publicKeys = [TestPublicKeys.Leaf]
+        let publicKeys = [TestPublicKeys.leaf]
         let policies: [String: ServerTrustPolicy] = [
             host: .pinPublicKeys(publicKeys: publicKeys, validateCertificateChain: false, validateHost: true)
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -352,21 +360,21 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
 
     func testThatExpiredCertificateRequestSucceedsWhenPinningIntermediateCAPublicKeyWithoutCertificateChainValidation() {
         // Given
-        let publicKeys = [TestPublicKeys.IntermediateCA]
+        let publicKeys = [TestPublicKeys.intermediateCA2]
         let policies: [String: ServerTrustPolicy] = [
             host: .pinPublicKeys(publicKeys: publicKeys, validateCertificateChain: false, validateHost: true)
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -380,21 +388,21 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
 
     func testThatExpiredCertificateRequestSucceedsWhenPinningRootCAPublicKeyWithoutCertificateChainValidation() {
         // Given
-        let publicKeys = [TestPublicKeys.RootCA]
+        let publicKeys = [TestPublicKeys.rootCA]
         let policies: [String: ServerTrustPolicy] = [
             host: .pinPublicKeys(publicKeys: publicKeys, validateCertificateChain: false, validateHost: true)
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -411,16 +419,16 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
     func testThatExpiredCertificateRequestSucceedsWhenDisablingEvaluation() {
         // Given
         let policies = [host: ServerTrustPolicy.disableEvaluation]
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -443,16 +451,16 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
             }
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
@@ -473,16 +481,16 @@ class TLSEvaluationExpiredLeafCertificateTestCase: BaseTestCase {
             }
         ]
 
-        let manager = Manager(
+        let manager = SessionManager(
             configuration: configuration,
             serverTrustPolicyManager: ServerTrustPolicyManager(policies: policies)
         )
 
-        weak var expectation = self.expectation(description: "\(URL)")
+        weak var expectation = self.expectation(description: "\(urlString)")
         var error: NSError?
 
         // When
-        manager.request(.GET, URL)
+        manager.request(urlString, withMethod: .get)
             .response { _, _, _, responseError in
                 error = responseError
                 expectation?.fulfill()
